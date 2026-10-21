@@ -1,0 +1,10 @@
+[k3s_server]
+node-1 ansible_host=85.8.201.134
+
+[k3s_agents]
+node-2 ansible_host=85.8.201.140
+node-3 ansible_host=85.8.201.138
+
+[all:vars]
+ansible_user=root
+ansible_ssh_private_key_file=~/.ssh/hack_ed25519
