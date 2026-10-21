@@ -1,0 +1,6 @@
+# Пример. Реальный файл создаётся командой:
+#   ansible-vault create inventories/hack/group_vars/all/vault.yml
+# и содержит те же два ключа с настоящими значениями.
+# Токен: openssl rand -hex 32
+vault_k3s_token: "СГЕНЕРИРУЙ-openssl-rand-hex-32"
+vault_letsencrypt_email: "devops@example.com"

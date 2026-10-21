@@ -1,0 +1,5 @@
+# kubeconfig и публичный ключ кластера создаются плейбуком, в git не нужны
+artifacts/*
+!artifacts/.gitkeep
+# пароль от ansible-vault
+.vault_pass

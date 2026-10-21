@@ -1,0 +1,7 @@
+# Управляется Ansible (роль k3s_agent). Ручные правки будут перезаписаны.
+server: "https://{{ hostvars[groups['k3s_server'][0]].ansible_host }}:{{ k3s_api_port }}"
+token: "{{ k3s_token }}"
+node-name: "{{ inventory_hostname }}"
+node-ip: "{{ ansible_host }}"
+node-label:
+  - "role={{ node_role }}"

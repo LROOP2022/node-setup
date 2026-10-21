@@ -1,0 +1,6 @@
+# Запускается только явно: ansible-playbook playbooks/site.yml --tags root
+# Требует, чтобы root-application.yml уже лежал в ветке {{ hack_manifests_branch }} репозитория hack-manifests.
+- name: Применить root Application (App of Apps)
+  ansible.builtin.command: kubectl apply -f {{ root_app_manifest_url }}
+  register: root_app_apply
+  changed_when: "'created' in root_app_apply.stdout or 'configured' in root_app_apply.stdout"

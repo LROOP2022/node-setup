@@ -1,0 +1,38 @@
+- name: Проверить, что ОС на базе Debian/Ubuntu (роли используют apt)
+  ansible.builtin.assert:
+    that: ansible_facts['os_family'] == "Debian"
+    fail_msg: "Роли рассчитаны на Debian/Ubuntu, а на {{ inventory_hostname }} {{ ansible_facts['os_family'] }}"
+    quiet: true
+
+- name: Проверить, что публичный IP из inventory назначен на сетевой интерфейс ноды
+  ansible.builtin.assert:
+    that: ansible_host in ansible_facts['all_ipv4_addresses']
+    fail_msg: >-
+      {{ ansible_host }} не найден среди адресов {{ inventory_hostname }}
+      ({{ ansible_facts['all_ipv4_addresses'] | join(', ') }}). Нода за NAT:
+      wireguard по публичным IP потребует node-external-ip и flannel-external-ip.
+    quiet: true
+
+- name: Установить базовые пакеты
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+      - apt-transport-https
+      - chrony
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# Рассинхрон часов ломает выпуск TLS-сертификатов и проверку токенов
+- name: Включить синхронизацию времени
+  ansible.builtin.systemd:
+    name: chrony
+    enabled: true
+    state: started
+
+# flannel wireguard-native использует модуль ядра wireguard
+- name: Проверить, что ядро поддерживает wireguard
+  ansible.builtin.command: modprobe wireguard
+  changed_when: false

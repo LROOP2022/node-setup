@@ -1,0 +1,67 @@
+# Запуск с рабочей машины:
+#   ansible-playbook playbooks/site.yml --ask-vault-pass
+# Порядок важен: сначала все ноды в кластер, потом компоненты, которые
+# закрепляются на node-1 по метке role=platform.
+
+- name: Базовая настройка всех нод
+  hosts: all
+  become: true
+  roles:
+    - role: common
+      tags: [common]
+
+- name: k3s server (node-1)
+  hosts: k3s_server
+  become: true
+  roles:
+    - role: k3s_server
+      tags: [k3s]
+
+- name: k3s agents (node-2, node-3)
+  hosts: k3s_agents
+  become: true
+  roles:
+    - role: k3s_agent
+      tags: [k3s]
+
+- name: Платформенные компоненты (выполняются на server)
+  hosts: k3s_server
+  become: true
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  pre_tasks:
+    - name: Дождаться, пока все ноды зарегистрируются и станут Ready
+      ansible.builtin.shell: |
+        set -eu -o pipefail
+        kubectl get nodes --no-headers | awk '$2=="Ready"' | wc -l
+      args:
+        executable: /bin/bash
+      register: ready_nodes
+      until: ready_nodes.stdout | int == (groups['all'] | length)
+      retries: 30
+      delay: 10
+      changed_when: false
+      tags: [always]
+
+    - name: Показать ноды и их метки role
+      ansible.builtin.command: kubectl get nodes -o wide -L role
+      register: nodes_overview
+      changed_when: false
+      tags: [always]
+
+    - name: Состояние нод
+      ansible.builtin.debug:
+        msg: "{{ nodes_overview.stdout_lines }}"
+      tags: [always]
+  roles:
+    - role: ingress_nginx
+      tags: [ingress]
+    - role: cert_manager
+      tags: [cert-manager]
+    - role: sealed_secrets
+      tags: [sealed-secrets]
+    - role: argocd
+      tags: [argocd]
+    # Только по явному запросу, после того как hack-manifests наполнен
+    - role: root_app
+      tags: [root, never]

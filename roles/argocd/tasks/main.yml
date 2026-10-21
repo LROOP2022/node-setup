@@ -1,0 +1,40 @@
+- name: Создать namespace argocd
+  ansible.builtin.shell: |
+    set -eu -o pipefail
+    kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+  args:
+    executable: /bin/bash
+  register: argocd_ns
+  changed_when: "'created' in argocd_ns.stdout"
+
+- name: Проверить, установлен ли Argo CD
+  ansible.builtin.command: kubectl get deployment argocd-server -n argocd
+  register: argocd_check
+  failed_when: false
+  changed_when: false
+
+# server-side apply: CRD Argo CD (например ApplicationSet) не помещаются
+# в аннотацию last-applied-configuration обычного apply
+- name: Установить Argo CD {{ argocd_version }}
+  ansible.builtin.command: >-
+    kubectl apply --server-side --force-conflicts -n argocd -f
+    https://raw.githubusercontent.com/argoproj/argo-cd/{{ argocd_version }}/manifests/install.yaml
+  register: argocd_apply
+  changed_when: "'serverside-applied' in argocd_apply.stdout"
+  when: argocd_check.rc != 0
+
+- name: Закрепить Argo CD на платформенной ноде
+  ansible.builtin.include_role:
+    name: pin_to_node
+  vars:
+    pin_namespace: argocd
+
+- name: Дождаться готовности всех компонентов Argo CD
+  ansible.builtin.shell: |
+    set -eu -o pipefail
+    for r in $(kubectl -n argocd get deployments,statefulsets -o name); do
+      kubectl -n argocd rollout status "$r" --timeout=300s
+    done
+  args:
+    executable: /bin/bash
+  changed_when: false

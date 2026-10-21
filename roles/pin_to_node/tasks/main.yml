@@ -1,0 +1,21 @@
+# Закрепляет Deployment и StatefulSet на ноде с меткой role=<pin_role>.
+# Вызывается из других ролей через include_role. Параметры:
+#   pin_namespace  (обязательно) namespace
+#   pin_targets    список "kind/name"; если пусто, все Deployment и StatefulSet в namespace
+#   pin_role       метка ноды, по умолчанию platform_node_role
+# Патч с тем же содержимым ничего не меняет и не перезапускает поды.
+- name: Закрепить workloads в {{ pin_namespace }} на ноде role={{ pin_role | default(platform_node_role) }}
+  ansible.builtin.shell: |
+    set -eu -o pipefail
+    ns="{{ pin_namespace }}"
+    targets="{{ pin_targets | default([]) | join(' ') }}"
+    if [ -z "$targets" ]; then
+      targets=$(kubectl -n "$ns" get deployments,statefulsets -o name)
+    fi
+    for t in $targets; do
+      kubectl -n "$ns" patch "$t" --type merge -p '{{ {"spec": {"template": {"spec": {"nodeSelector": {"role": (pin_role | default(platform_node_role))}}}}} | to_json }}'
+    done
+  args:
+    executable: /bin/bash
+  register: pin_result
+  changed_when: pin_result.stdout_lines | reject('search', 'no change') | list | length > 0

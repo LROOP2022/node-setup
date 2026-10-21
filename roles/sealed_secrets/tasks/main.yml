@@ -1,0 +1,54 @@
+- name: Проверить, установлен ли контроллер Sealed Secrets
+  ansible.builtin.command: kubectl get deployment sealed-secrets-controller -n kube-system
+  register: sealed_secrets_check
+  failed_when: false
+  changed_when: false
+
+- name: Установить Sealed Secrets {{ sealed_secrets_version }}
+  ansible.builtin.command: >-
+    kubectl apply -f
+    https://github.com/bitnami/sealed-secrets/releases/download/{{ sealed_secrets_version }}/controller.yaml
+  register: sealed_secrets_apply
+  changed_when: "'created' in sealed_secrets_apply.stdout"
+  when: sealed_secrets_check.rc != 0
+
+# kube-system общий, поэтому закрепляем только контроллер, а не весь namespace
+- name: Закрепить контроллер Sealed Secrets на платформенной ноде
+  ansible.builtin.include_role:
+    name: pin_to_node
+  vars:
+    pin_namespace: kube-system
+    pin_targets:
+      - deployment/sealed-secrets-controller
+
+- name: Дождаться готовности контроллера Sealed Secrets
+  ansible.builtin.command: kubectl -n kube-system rollout status deployment/sealed-secrets-controller --timeout=300s
+  changed_when: false
+
+# Публичный ключ ЭТОГО кластера. Ключ у каждого кластера свой: после пересоздания
+# кластера он меняется, и секреты нужно запечатать заново (make pubkey-update, make seal)
+- name: Получить публичный сертификат Sealed Secrets
+  ansible.builtin.command: >-
+    kubectl get --raw
+    /api/v1/namespaces/kube-system/services/http:sealed-secrets-controller:8080/proxy/v1/cert.pem
+  register: sealed_cert
+  until: sealed_cert.rc == 0
+  retries: 12
+  delay: 5
+  changed_when: false
+
+- name: Создать каталог artifacts на рабочей машине
+  ansible.builtin.file:
+    path: "{{ artifacts_dir }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+
+- name: Сохранить публичный ключ на рабочей машине
+  ansible.builtin.copy:
+    content: "{{ sealed_cert.stdout }}\n"
+    dest: "{{ artifacts_dir }}/sealed-secrets.pub.pem"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
