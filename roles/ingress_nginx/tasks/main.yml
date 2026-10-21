@@ -1,0 +1,27 @@
+# ingress-nginx выведен из поддержки (март 2026), но для 3 дней остаётся
+# решением из conventions.md. Записано в техдолг (inventory.md).
+- name: Проверить, установлен ли ingress-nginx
+  ansible.builtin.command: kubectl get deployment ingress-nginx-controller -n ingress-nginx
+  register: ingress_nginx_check
+  failed_when: false
+  changed_when: false
+
+- name: Установить ingress-nginx {{ ingress_nginx_version }}
+  ansible.builtin.command: >-
+    kubectl apply -f
+    https://raw.githubusercontent.com/kubernetes/ingress-nginx/{{ ingress_nginx_version }}/deploy/static/provider/cloud/deploy.yaml
+  register: ingress_nginx_apply
+  changed_when: "'created' in ingress_nginx_apply.stdout"
+  when: ingress_nginx_check.rc != 0
+
+# Контроллер только на node-1: один адрес в DNS, а servicelb (80/443)
+# поднимается на той же ноде по метке из конфига k3s server
+- name: Закрепить ingress-nginx на ingress-ноде
+  ansible.builtin.include_role:
+    name: pin_to_node
+  vars:
+    pin_namespace: ingress-nginx
+
+- name: Дождаться готовности контроллера ingress-nginx
+  ansible.builtin.command: kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=300s
+  changed_when: false

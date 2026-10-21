@@ -1,0 +1,43 @@
+- name: Проверить, установлен ли cert-manager
+  ansible.builtin.command: kubectl get deployment cert-manager -n cert-manager
+  register: cert_manager_check
+  failed_when: false
+  changed_when: false
+
+# server-side apply: CRD cert-manager большие, обычный apply может упереться
+# в лимит размера аннотации last-applied-configuration
+- name: Установить cert-manager {{ cert_manager_version }}
+  ansible.builtin.command: >-
+    kubectl apply --server-side --force-conflicts -f
+    https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.yaml
+  register: cert_manager_apply
+  changed_when: "'serverside-applied' in cert_manager_apply.stdout"
+  when: cert_manager_check.rc != 0
+
+- name: Закрепить cert-manager на платформенной ноде
+  ansible.builtin.include_role:
+    name: pin_to_node
+  vars:
+    pin_namespace: cert-manager
+
+- name: Дождаться готовности cert-manager, cainjector и webhook
+  ansible.builtin.shell: |
+    set -eu -o pipefail
+    for d in cert-manager cert-manager-cainjector cert-manager-webhook; do
+      kubectl -n cert-manager rollout status deployment/$d --timeout=300s
+    done
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+# Манифест подаётся через stdin, временных файлов на ноде нет.
+# Повторы нужны: webhook cert-manager может быть ещё не готов принимать ресурсы.
+- name: Применить ClusterIssuer (staging и prod)
+  ansible.builtin.command: kubectl apply -f -
+  args:
+    stdin: "{{ lookup('ansible.builtin.template', 'cluster-issuer.yaml.j2') }}"
+  register: cluster_issuer_result
+  retries: 6
+  delay: 10
+  until: cluster_issuer_result.rc == 0
+  changed_when: "'created' in cluster_issuer_result.stdout or 'configured' in cluster_issuer_result.stdout"

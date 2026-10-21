@@ -1,9 +1,9 @@
 [k3s_server]
-node-1 ansible_host=85.8.201.134
+node-1 ansible_host=85.8.201.134 node_role=platform
 
 [k3s_agents]
-node-2 ansible_host=85.8.201.140
-node-3 ansible_host=85.8.201.138
+node-2 ansible_host=85.8.201.140 node_role=data
+node-3 ansible_host=85.8.201.138 node_role=apps
 
 [all:vars]
 ansible_user=root

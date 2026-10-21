@@ -1,0 +1,13 @@
+# Управляется Ansible (роль k3s_server). Ручные правки будут перезаписаны.
+token: "{{ k3s_token }}"
+node-name: "{{ inventory_hostname }}"
+node-ip: "{{ ansible_host }}"
+tls-san:
+  - "{{ ansible_host }}"
+disable:
+  - traefik
+flannel-backend: "{{ k3s_flannel_backend }}"
+node-label:
+  - "role={{ node_role }}"
+  # servicelb (80/443) поднимается только на ноде с этой меткой, то есть на ingress-ноде
+  - "svccontroller.k3s.cattle.io/enablelb=true"
